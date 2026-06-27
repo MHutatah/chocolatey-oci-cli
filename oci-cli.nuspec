@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>oci-cli</id>
+    <version>3.88.0</version>
+    <title>Oracle Cloud Infrastructure CLI (oci-cli)</title>
+    <authors>Oracle</authors>
+    <!-- TODO: confirm this matches your community.chocolatey.org account name -->
+    <owners>MHutatah</owners>
+    <projectUrl>https://docs.oracle.com/en-us/iaas/Content/API/Concepts/cliconcepts.htm</projectUrl>
+    <packageSourceUrl>https://github.com/MHutatah/chocolatey-oci-cli</packageSourceUrl>
+    <projectSourceUrl>https://github.com/oracle/oci-cli</projectSourceUrl>
+    <docsUrl>https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/</docsUrl>
+    <bugTrackerUrl>https://github.com/oracle/oci-cli/issues</bugTrackerUrl>
+    <licenseUrl>https://github.com/oracle/oci-cli/blob/master/LICENSE.txt</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <copyright>Copyright (c) Oracle and/or its affiliates.</copyright>
+    <releaseNotes>https://github.com/oracle/oci-cli/releases</releaseNotes>
+    <summary>Oracle Cloud Infrastructure command-line interface (installed command: oci).</summary>
+    <description>
+**This is an unofficial, community-maintained package.** It is not maintained by or affiliated with Oracle.
+
+The [Oracle Cloud Infrastructure (OCI) CLI](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/cliconcepts.htm) is a small-footprint tool that you can use on its own or with the OCI Console to complete Oracle Cloud Infrastructure tasks. It provides the same core functionality as the Console, plus extra commands, all from the command line.
+
+This package downloads Oracle's official Windows MSI installer at install time directly from the project's GitHub releases (github.com/oracle/oci-cli), verifies it against the SHA256 checksum Oracle publishes in the release notes, and installs it silently. The installer bundles its own Python runtime, installs to `C:\Program Files (x86)\Oracle\oci_cli\`, and adds `oci` to your system PATH. No separate Python installation is required.
+
+After installing, open a new terminal and run `oci setup config` to configure API-key credentials, or `oci session authenticate` for browser-based session-token auth.
+
+OCI CLI is open source, licensed under the Universal Permissive License (UPL) 1.0 and/or the Apache License 2.0.
+    </description>
+    <tags>oracle oci oracle-cloud cloud iaas cli command-line admin sdk infrastructure</tags>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>
