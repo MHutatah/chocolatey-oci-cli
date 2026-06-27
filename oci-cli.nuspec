@@ -12,6 +12,7 @@
     <projectSourceUrl>https://github.com/oracle/oci-cli</projectSourceUrl>
     <docsUrl>https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/</docsUrl>
     <bugTrackerUrl>https://github.com/oracle/oci-cli/issues</bugTrackerUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/MHutatah/chocolatey-oci-cli@c6eb87214fab4b3e3a152d2f5857191d0eff4d23/icon.png</iconUrl>
     <licenseUrl>https://github.com/oracle/oci-cli/blob/master/LICENSE.txt</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <copyright>Copyright (c) Oracle and/or its affiliates.</copyright>
