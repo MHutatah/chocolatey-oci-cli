@@ -10,7 +10,7 @@ if ($key.Count -eq 1) {
         $packageArgs = @{
             packageName    = $packageName
             fileType       = 'msi'
-            # PSChildName is the MSI ProductCode; Chocolatey runs 'msiexec /x <code>'.
+            # PSChildName is the MSI product code, passed to Uninstall-ChocolateyPackage to remove it.
             silentArgs     = "$($_.PSChildName) /qn /norestart"
             validExitCodes = @(0, 3010, 1605, 1614, 1641)
             file           = ''
