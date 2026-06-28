@@ -1,0 +1,29 @@
+name: Publish current version
+
+# Manual one-shot: pack the package at its current nuspec version and push it to
+# the Chocolatey community feed. Use for the initial publish (the auto-update
+# workflow only pushes when a NEW upstream version appears) or to re-push the
+# same version during moderation. Needs the CHOCO_API_KEY repository secret.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pack and push the current version
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+        run: |
+          $v = ([xml](Get-Content oci-cli.nuspec)).package.metadata.version
+          Write-Host "Packing oci-cli $v ..."
+          choco pack oci-cli.nuspec --out .
+          if ($LASTEXITCODE -ne 0) { throw "choco pack failed." }
+          Write-Host "Pushing oci-cli.$v.nupkg ..."
+          choco push "oci-cli.$v.nupkg" --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
+          if ($LASTEXITCODE -ne 0) { throw "choco push failed." }
+          Write-Host "Pushed oci-cli $v. It now enters Chocolatey moderation."
