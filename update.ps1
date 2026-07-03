@@ -26,6 +26,16 @@ $nuspecPath  = Join-Path $PSScriptRoot 'oci-cli.nuspec'
 $installPath = Join-Path $PSScriptRoot 'tools\chocolateyinstall.ps1'
 $verifyPath  = Join-Path $PSScriptRoot 'tools\VERIFICATION.txt'
 
+function Save-XmlNoBom([xml]$Xml, [string]$Path) {
+    $settings = New-Object System.Xml.XmlWriterSettings
+    $settings.Encoding = New-Object System.Text.UTF8Encoding($false)
+    $settings.Indent = $true
+    $settings.OmitXmlDeclaration = $false
+
+    $writer = [System.Xml.XmlWriter]::Create($Path, $settings)
+    try { $Xml.Save($writer) } finally { $writer.Close() }
+}
+
 function Resolve-OciRelease {
     $headers = @{ 'User-Agent' = 'chocolatey-oci-cli-updater'; 'Accept' = 'application/vnd.github+json' }
     if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
@@ -75,7 +85,7 @@ foreach ($path in $installPath, $verifyPath) {
 }
 
 $nuspec.package.metadata.version = $rel.Version
-$nuspec.Save($nuspecPath)
+Save-XmlNoBom $nuspec $nuspecPath
 Write-Host "Updated nuspec, chocolateyinstall.ps1, and VERIFICATION.txt to $($rel.Version)."
 
 Write-Host "Packing..."

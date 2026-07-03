@@ -20,24 +20,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update, pack, and push if a new version exists
+      - name: Update and pack if a new version exists
+        id: update
         shell: pwsh
         env:
-          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./update.ps1 -Push
+        run: |
+          ./update.ps1
+          $changed = -not [string]::IsNullOrWhiteSpace((git status --porcelain -- oci-cli.nuspec tools/chocolateyinstall.ps1 tools/VERIFICATION.txt))
+          $v = ([xml](Get-Content oci-cli.nuspec)).package.metadata.version
+          "changed=$($changed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "version=$v" >> $env:GITHUB_OUTPUT
 
       - name: Commit the version bump back to the repo
+        if: steps.update.outputs.changed == 'true'
         shell: pwsh
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add oci-cli.nuspec tools/chocolateyinstall.ps1 tools/VERIFICATION.txt
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) {
-              Write-Host "No version change to commit."
-          } else {
-              $v = ([xml](Get-Content oci-cli.nuspec)).package.metadata.version
-              git commit -m "Update OCI CLI to $v"
-              git push
+          git commit -m "Update OCI CLI to $env:OCI_VERSION"
+          git push
+        env:
+          OCI_VERSION: ${{ steps.update.outputs.version }}
+
+      - name: Push package to Chocolatey
+        if: steps.update.outputs.changed == 'true'
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+          OCI_VERSION: ${{ steps.update.outputs.version }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CHOCO_API_KEY)) {
+              throw "CHOCO_API_KEY repository secret is not set."
+          }
+          $nupkg = "oci-cli.$env:OCI_VERSION.nupkg"
+          if (-not (Test-Path $nupkg)) { throw "Missing package artifact: $nupkg" }
+          Write-Host "Pushing $nupkg ..."
+          choco push $nupkg --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
+          if ($LASTEXITCODE -ne 0) {
+              throw "choco push failed. Check that CHOCO_API_KEY belongs to a Chocolatey account allowed to push package id 'oci-cli'."
           }
