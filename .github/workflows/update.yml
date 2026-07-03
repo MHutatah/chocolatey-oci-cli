@@ -18,7 +18,7 @@ jobs:
     permissions:
       contents: write       # to commit the version bump back
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Update and pack if a new version exists
         id: update
