@@ -8,16 +8,16 @@ The OCI CLI installer is NOT bundled in this package. It is downloaded at
 install time directly from Oracle's official GitHub release assets for the
 open-source oracle/oci-cli project:
 
-  https://github.com/oracle/oci-cli/releases/download/v3.89.0/oci-cli-3.89.0-Windows-Server-Installer.msi
+  https://github.com/oracle/oci-cli/releases/download/v3.89.2/oci-cli-3.89.2-Windows-Server-Installer.msi
 
 SHA256 checksum (also embedded in tools\chocolateyinstall.ps1):
 
-  d17fa347a2c322ea0ccf6a73e056e9735aa57e85c6828648b4670506f5e91869
+  1c5050aa04b9d55c7871e23e7a3a0f22aa22a34a3030f86c590343e9c231dc8b
 
 This is the exact checksum Oracle publishes in the release notes, under the
 "File Checksums (SHA256)" section of:
 
-  https://github.com/oracle/oci-cli/releases/tag/v3.89.0
+  https://github.com/oracle/oci-cli/releases/tag/v3.89.2
 
 To verify, download the MSI above and compare its hash:
 
