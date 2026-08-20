@@ -48,29 +48,71 @@ jobs:
           OCI_VERSION: ${{ steps.update.outputs.version }}
 
       - name: Push package to Chocolatey
-        if: steps.update.outputs.changed == 'true'
+        # Deliberately not gated on 'changed': the commit step is what makes
+        # 'changed' false on the next run, so a push lost to a feed outage would
+        # never be retried. The feed itself is the source of truth here.
+        if: always() && steps.update.outputs.version != ''
         shell: pwsh
         env:
           CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
           OCI_VERSION: ${{ steps.update.outputs.version }}
+          CHANGED: ${{ steps.update.outputs.changed }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:CHOCO_API_KEY)) {
               throw "CHOCO_API_KEY repository secret is not set."
           }
-          $nupkg = "oci-cli.$env:OCI_VERSION.nupkg"
+          $v = $env:OCI_VERSION
+
+          # Exact id+version resolves versions the listing endpoints hide, including
+          # ones still under moderation, so this answers "is it already published?"
+          # rather than merely "is it approved?". The feed 503s often enough that
+          # 'unknown' has to be a distinct answer from 'absent'.
+          function Get-FeedState {
+              param([string]$Version)
+              $u = "https://community.chocolatey.org/api/v2/Packages(Id='oci-cli',Version='$Version')"
+              try {
+                  Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 30 | Out-Null
+                  return 'present'
+              } catch {
+                  $code = 0
+                  if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+                  if ($code -eq 404) { return 'absent' }
+                  Write-Warning "Feed probe for oci-cli $Version returned $code."
+                  return 'unknown'
+              }
+          }
+
+          $state = Get-FeedState $v
+          if ($state -eq 'present') {
+              Write-Host "oci-cli $v is already on the feed. Nothing to push."
+              exit 0
+          }
+          if ($state -eq 'unknown' -and $env:CHANGED -ne 'true') {
+              # The feed could not confirm, and this run changed nothing, so pushing
+              # would risk a duplicate. Leave it: the next run re-checks.
+              Write-Host "Feed did not answer and this run changed nothing. Skipping."
+              exit 0
+          }
+
+          $nupkg = "oci-cli.$v.nupkg"
           if (-not (Test-Path $nupkg)) { throw "Missing package artifact: $nupkg" }
+
+          # push.chocolatey.org returns a transient 503 often enough to matter.
           Write-Host "Pushing $nupkg ..."
-          # push.chocolatey.org returns a transient 503 often enough to matter, and
-          # by this point the version bump is already committed, so a lost push
-          # leaves the package unpublished until the next upstream release.
           foreach ($attempt in 1..3) {
               choco push $nupkg --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
               if ($LASTEXITCODE -eq 0) { break }
+              # A 409 from a duplicate push is indistinguishable from a real failure
+              # by exit code, so re-probe instead of parsing choco's output.
+              if ((Get-FeedState $v) -eq 'present') {
+                  Write-Host "$v is on the feed; that push was a duplicate. Treating as published."
+                  exit 0
+              }
               if ($attempt -lt 3) {
                   Write-Host "Push attempt $attempt failed. Retrying in 60s ..."
                   Start-Sleep -Seconds 60
               }
           }
           if ($LASTEXITCODE -ne 0) {
-              throw "choco push failed 3 times. If this was transient, re-publish with the 'Publish current version' workflow. Otherwise check that CHOCO_API_KEY belongs to a Chocolatey account allowed to push package id 'oci-cli'."
+              throw "choco push failed 3 times. Check that CHOCO_API_KEY belongs to a Chocolatey account allowed to push package id 'oci-cli'. A transient failure needs no action: the next scheduled run re-pushes, because the feed check drives the push rather than the file diff."
           }
