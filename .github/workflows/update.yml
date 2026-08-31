@@ -17,6 +17,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write       # to commit the version bump back
+      issues: write         # to report a release that ships no Windows MSI
     steps:
       - uses: actions/checkout@v7
 
@@ -116,3 +117,38 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
               throw "choco push failed 3 times. Check that CHOCO_API_KEY belongs to a Chocolatey account allowed to push package id 'oci-cli'. A transient failure needs no action: the next scheduled run re-pushes, because the feed check drives the push rather than the file diff."
           }
+
+      - name: Report a release that ships no Windows MSI
+        # Oracle uploads the MSI ~20h after publishing and sometimes skips it
+        # entirely. update.ps1 falls back to the newest MSI-bearing release so the
+        # run stays green, which means the standstill would otherwise be silent.
+        # An assigned issue is the notification: GitHub emails assignees.
+        if: always() && steps.update.outputs.msi_missing != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MISSING: ${{ steps.update.outputs.msi_missing }}
+          PACKAGED: ${{ steps.update.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $title = "Oracle release $env:MISSING ships no Windows MSI"
+          # --state all, so closing the issue does not make it come back tomorrow.
+          $existing = gh issue list --state all --limit 100 --json title --jq '.[].title'
+          if ($existing -contains $title) {
+              Write-Host "Already reported: $title"
+              exit 0
+          }
+          # Built as an array rather than a here-string: a here-string terminator
+          # has to sit at column 0, which a YAML block scalar cannot contain.
+          $body = @(
+              "Oracle published v$env:MISSING with no *-Windows-Server-Installer.msi asset, and it is still missing more than 48 hours after publication. Oracle normally uploads that asset about 20 hours after a release, so this is past the point where it is merely late.",
+              "",
+              "The updater fell back to the newest release that does carry an MSI, so the package stays at $env:PACKAGED and this workflow stays green. Nothing is broken. The package simply will not move until Oracle ships an MSI again.",
+              "",
+              "Release: https://github.com/oracle/oci-cli/releases/tag/v$env:MISSING",
+              "Run: $env:RUN_URL",
+              "",
+              "Close this once Oracle uploads the MSI, or if they have dropped it for good and the package needs a different install source."
+          ) -join "`n"
+          gh issue create --title $title --body $body --assignee $env:OWNER

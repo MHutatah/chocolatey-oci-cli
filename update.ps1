@@ -1,10 +1,14 @@
 #requires -Version 5.1
 # Automated updater for the community oci-cli Chocolatey package.
 #
-# Resolves the latest release from the oracle/oci-cli GitHub releases API, finds
-# the official Windows MSI asset, and reads its SHA256 from the checksum list
-# Oracle publishes in the release notes (no large download needed). It rewrites
-# the package files, packs, and with -Push also publishes.
+# Resolves the newest oracle/oci-cli release that actually ships the official
+# Windows MSI, and reads its SHA256 from the checksum list Oracle publishes in
+# the release notes (no large download needed). It rewrites the package files,
+# packs, and with -Push also publishes.
+#
+# Not simply 'releases/latest': Oracle uploads the MSI roughly a day after
+# publishing a release, and sometimes skips it altogether (3.90.2, 3.91.0), so
+# 'latest' regularly points at a release with nothing for us to package.
 #
 #   .\update.ps1               # update + pack only
 #   .\update.ps1 -Push         # update + pack + push (needs CHOCO_API_KEY)
@@ -15,7 +19,11 @@ param(
     [switch]$Push,
     [switch]$ResolveOnly,
     [string]$ApiKey     = $env:CHOCO_API_KEY,
-    [string]$PushSource = 'https://push.chocolatey.org/'
+    [string]$PushSource = 'https://push.chocolatey.org/',
+    # How long Oracle is allowed to take over the MSI upload before a newer
+    # MSI-less release counts as skipped rather than merely pending. Observed
+    # lag is 18-22h across 3.89.3, 3.90.0, 3.90.1 and 3.90.3.
+    [int]$MsiGraceHours = 48
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,27 +48,53 @@ function Resolve-OciRelease {
     $headers = @{ 'User-Agent' = 'chocolatey-oci-cli-updater'; 'Accept' = 'application/vnd.github+json' }
     if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
 
-    $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/oracle/oci-cli/releases/latest' -Headers $headers
-    $version = $rel.tag_name -replace '^v', ''
-    if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Unexpected release tag: '$($rel.tag_name)'." }
+    # Assign before filtering: in Windows PowerShell 5.1 Invoke-RestMethod emits a
+    # JSON array as a single pipeline item, so piping it straight into Where-Object
+    # binds $_ to the whole array and every element test silently fails.
+    $all = Invoke-RestMethod -Uri 'https://api.github.com/repos/oracle/oci-cli/releases?per_page=15' -Headers $headers
+    $releases = @($all | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -match '^v\d+\.\d+\.\d+$' })
+    if (-not $releases) { throw "No usable releases returned for oracle/oci-cli." }
 
-    $asset = $rel.assets | Where-Object { $_.name -like '*Windows-Server-Installer.msi' } | Select-Object -First 1
-    if (-not $asset) { throw "No Windows MSI asset found in release $version." }
+    $newest = $releases[0]
+    $rel = $releases | Where-Object {
+        $_.assets | Where-Object { $_.name -like '*Windows-Server-Installer.msi' }
+    } | Select-Object -First 1
+    if (-not $rel) { throw "None of the last $($releases.Count) oracle/oci-cli releases carries a Windows MSI asset." }
+
+    $version = $rel.tag_name -replace '^v', ''
+    $asset   = $rel.assets | Where-Object { $_.name -like '*Windows-Server-Installer.msi' } | Select-Object -First 1
 
     # Oracle lists each asset's SHA256 in the release body under "File Checksums (SHA256)".
     $sha = [regex]::Match($rel.body, [regex]::Escape($asset.name) + '\s+([0-9a-fA-F]{64})').Groups[1].Value
     if (-not $sha) { throw "Could not find a published SHA256 for $($asset.name) in the release notes." }
 
+    # A newer release without an MSI is normal for about a day. Past the grace
+    # window it means Oracle skipped Windows for that release, which is worth
+    # saying out loud, since from here on the package silently stands still.
+    $skipped = $null
+    if ($rel.tag_name -ne $newest.tag_name) {
+        $published = ([datetime]$newest.published_at).ToUniversalTime()
+        if (([datetime]::UtcNow - $published).TotalHours -gt $MsiGraceHours) {
+            $skipped = $newest.tag_name -replace '^v', ''
+        }
+    }
+
     [pscustomobject]@{
-        Version = $version
-        Url     = $asset.browser_download_url
-        Sha256  = $sha.ToLower()
+        Version    = $version
+        Url        = $asset.browser_download_url
+        Sha256     = $sha.ToLower()
+        SkippedMsi = $skipped
     }
 }
 
 $rel = Resolve-OciRelease
 
-if ($ResolveOnly) { $rel | Format-List; return }
+if ($rel.SkippedMsi) {
+    Write-Warning "Oracle release $($rel.SkippedMsi) has shipped no Windows MSI more than $MsiGraceHours h after publication. Packaging $($rel.Version) instead; the package stands still until Oracle ships an MSI again."
+    if ($env:GITHUB_OUTPUT) { "msi_missing=$($rel.SkippedMsi)" | Add-Content -Path $env:GITHUB_OUTPUT }
+}
+
+if ($ResolveOnly) { return $rel }   # returned, not formatted, so callers can assert on it
 
 $nuspec  = [xml](Get-Content $nuspecPath -Raw)
 $current = $nuspec.package.metadata.version
